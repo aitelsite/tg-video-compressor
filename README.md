@@ -16,7 +16,7 @@
 ## تنظیمات Cloudflare Worker
 Secrets:
 - `BOT_TOKEN`
-- `GH_TOKEN` (Fine-grained token فقط برای همین مخزن؛ Actions: Read and write)
+- `GH_TOKEN` (Fine-grained token فقط برای همین مخزن؛ Contents: Read and write)
 - `WEBHOOK_SECRET`
 - `ALLOWED_IDS` (شناسه عددی کاربران مجاز، جداشده با فاصله یا کاما؛ خالی یعنی همه)
 
