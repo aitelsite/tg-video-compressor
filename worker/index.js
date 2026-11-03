@@ -13,16 +13,16 @@ async function telegram(env, method, body) {
 
 function isAllowed(id, raw) {
   if (!raw || !raw.trim()) return true;
-  return raw.split(/[ ,\\n\\t]+/).filter(Boolean).includes(String(id));
+  return raw.split(/[ ,\n\t]+/).filter(Boolean).includes(String(id));
 }
 
 function requestedHeight(text) {
-  const match = String(text || "").match(/(?:^|\\s)(240|360|480|540|720|1080|small)(?:\\s|$)/i);
+  const match = String(text || "").match(/(?:^|\s)(240|360|480|540|720|1080|small)(?:\s|$)/i);
   return match ? match[1].toLowerCase() : "";
 }
 
 function findUrl(text) {
-  const match = String(text || "").match(/https?:\\/\\/[^\\s<>"']+/i);
+  const match = String(text || "").match(/https?:\/\/[^\s<>"']+/i);
   return match ? match[0].replace(/[),.!?]+$/, "") : "";
 }
 
@@ -45,9 +45,9 @@ export default {
       }
 
       const text = msg.text || msg.caption || "";
-      if (msg.text && /^\\/start(?:@\\w+)?(?:\\s|$)/i.test(msg.text)) {
+      if (msg.text && /^\/start(?:@\w+)?(?:\s|$)/i.test(msg.text)) {
         await telegram(env, "sendMessage", { chat_id: chatId,
-          text: "سلام! 🎬\\nویدیو را ارسال کنید یا لینک مستقیم فایل را بفرستید.\\n\\nبرای تعیین ارتفاع، در متن یا کپشن بنویسید: 480، 720، 1080 یا small.\\n\\nدرخواست شما در صف پردازش قرار می‌گیرد و فایل نهایی همین‌جا ارسال می‌شود." });
+          text: "سلام! 🎬\nویدیو را ارسال کنید یا لینک مستقیم فایل را بفرستید.\n\nبرای تعیین ارتفاع، در متن یا کپشن بنویسید: 480، 720، 1080 یا small.\n\nدرخواست شما در صف پردازش قرار می‌گیرد و فایل نهایی همین‌جا ارسال می‌شود." });
         return json({ ok: true });
       }
 
@@ -80,7 +80,7 @@ export default {
         await telegram(env, "sendMessage", { chat_id: chatId, text: "ثبت درخواست انجام نشد. لطفاً کمی بعد دوباره تلاش کنید." });
         return json({ ok: true });
       }
-      await telegram(env, "sendMessage", { chat_id: chatId, text: "در صف قرار گرفت ⏳\\nپس از آماده‌شدن، ویدیوی فشرده‌شده همین‌جا ارسال می‌شود." });
+      await telegram(env, "sendMessage", { chat_id: chatId, text: "در صف قرار گرفت ⏳\nپس از آماده‌شدن، ویدیوی فشرده‌شده همین‌جا ارسال می‌شود." });
     } catch (error) {
       console.error("Webhook error:", String(error).slice(0, 250));
     }
