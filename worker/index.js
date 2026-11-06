@@ -39,10 +39,8 @@ export default {
 
     const chatId = msg.chat.id;
     try {
-      if (!isAllowed(msg.from.id, env.ALLOWED_IDS)) {
-        await telegram(env, "sendMessage", { chat_id: chatId, text: "شما اجازه استفاده از این ربات را ندارید." });
-        return json({ ok: true });
-      }
+      // Unauthorized users receive no Telegram message or other bot response.
+      if (!isAllowed(msg.from.id, env.ALLOWED_IDS)) return json({ ok: true });
 
       const text = msg.text || msg.caption || "";
       if (msg.text && /^\/start(?:@\w+)?(?:\s|$)/i.test(msg.text)) {
