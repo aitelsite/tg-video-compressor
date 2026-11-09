@@ -111,12 +111,47 @@ async def main():
         else:
             await status.edit_text("در حال دریافت ویدیو از تلگرام… ⬇️")
             message = await app.get_messages(CHAT, MSG)
-            if not message or not (message.video or message.document):
+            if not message:
                 raise RuntimeError("پیام ویدیویی در تلگرام پیدا نشد.")
-            downloaded = await app.download_media(message, file_name=str(work / "source_"))
-            if not downloaded:
-                raise RuntimeError("دریافت فایل از تلگرام ناموفق بود.")
-            source = Path(downloaded)
+
+            media = message.video or message.document
+            if not media or (message.document and not str(media.mime_type or "").startswith("video/")):
+                raise RuntimeError("پیام انتخاب‌شده فایل ویدیویی ندارد.")
+
+            expected_size = int(getattr(media, "file_size", 0) or 0)
+            last_error = "دانلود ناقص بود."
+            for attempt in range(1, 4):
+                candidate = work / f"telegram_video_{attempt}"
+                try:
+                    downloaded = await app.download_media(
+                        message, file_name=str(candidate)
+                    )
+                    if not downloaded:
+                        raise RuntimeError("تلگرام فایلی برنگرداند.")
+                    candidate_path = Path(downloaded)
+                    if not candidate_path.exists() or not candidate_path.is_file():
+                        raise RuntimeError("فایل دانلودشده در مسیر مورد انتظار وجود ندارد.")
+                    actual_size = candidate_path.stat().st_size
+                    if actual_size <= 0:
+                        raise RuntimeError("فایل دانلودشده خالی است.")
+                    if expected_size and actual_size != expected_size:
+                        raise RuntimeError(
+                            f"دانلود کامل نیست؛ اندازه دریافت‌شده {actual_size} از {expected_size} بایت است."
+                        )
+                    probe(candidate_path)
+                    source = candidate_path
+                    break
+                except Exception as exc:
+                    last_error = str(exc)
+                    for partial in work.glob(candidate.name + "*"):
+                        if partial.is_file():
+                            partial.unlink(missing_ok=True)
+                    if attempt == 3:
+                        raise RuntimeError(
+                            "دریافت کامل ویدیو از تلگرام پس از ۳ تلاش ناموفق بود. "
+                            + last_error[:350]
+                        )
+                    await asyncio.sleep(attempt * 2)
 
         original_size = source.stat().st_size
         if not original_size:
