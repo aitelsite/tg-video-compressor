@@ -27,31 +27,59 @@ def run(args):
 
 
 def probe(path):
-    raw = subprocess.check_output([
+    result = subprocess.run([
         "ffprobe", "-v", "error", "-show_entries",
         "format=duration:stream=width,height", "-of", "json", str(path)
-    ], text=True)
-    data = json.loads(raw)
-    stream = next(s for s in data.get("streams", []) if "width" in s)
-    return max(1, int(float(data.get("format", {}).get("duration", 1)))), int(stream["width"]), int(stream["height"])
+    ], text=True, capture_output=True)
+    if result.returncode != 0:
+        detail = (result.stderr or "").strip()
+        raise RuntimeError(
+            "فایل دریافت‌شده ویدیوی معتبر نیست یا ناقص دانلود شده است."
+            + (f" جزئیات: {detail[:300]}" if detail else "")
+        )
+    try:
+        data = json.loads(result.stdout)
+        stream = next(s for s in data.get("streams", []) if "width" in s)
+        return max(1, int(float(data.get("format", {}).get("duration", 1)))), int(stream["width"]), int(stream["height"])
+    except (ValueError, KeyError, StopIteration, TypeError):
+        raise RuntimeError("فایل ورودی فاقد اطلاعات معتبر ویدیویی است.")
 
 
 def download_url(url, target):
     if not url.startswith(("http://", "https://")):
         raise RuntimeError("لینک دانلود معتبر نیست.")
-    result = subprocess.run([
+
+    # yt-dlp appends the real media extension; do not assume it wrote target.
+    template = str(target) + ".%(ext)s"
+    subprocess.run([
         sys.executable, "-m", "yt_dlp", "--no-playlist",
-        "--max-filesize", str(MAX_INPUT), "-o", str(target), url
+        "--max-filesize", str(MAX_INPUT), "-o", template, url
     ])
-    if result.returncode != 0 or not target.exists():
-        target.unlink(missing_ok=True)
-        run(["curl", "-fL", "--retry", "2", "--connect-timeout", "20",
-             "--max-time", "3600", "--max-filesize", str(MAX_INPUT),
-             "-o", str(target), url])
+    candidates = sorted(
+        (p for p in target.parent.glob(target.name + ".*")
+         if p.is_file() and not p.name.endswith((".part", ".ytdl"))),
+        key=lambda p: p.stat().st_size if p.exists() else 0,
+        reverse=True
+    )
+    for candidate in candidates:
+        if candidate.stat().st_size and candidate.stat().st_size <= MAX_INPUT:
+            try:
+                probe(candidate)
+                return candidate
+            except Exception:
+                candidate.unlink(missing_ok=True)
+
+    # Fallback is only for direct downloadable URLs.
+    target.unlink(missing_ok=True)
+    run(["curl", "-fL", "--retry", "2", "--connect-timeout", "20",
+         "--max-time", "3600", "--max-filesize", str(MAX_INPUT),
+         "-o", str(target), url])
     if not target.exists() or not target.stat().st_size:
         raise RuntimeError("دانلود ویدیو ناموفق بود.")
     if target.stat().st_size > MAX_INPUT:
         raise RuntimeError("حجم فایل از سقف تنظیم‌شده بیشتر است.")
+    probe(target)
+    return target
 
 
 async def main():
@@ -79,7 +107,7 @@ async def main():
         status = await app.send_message(CHAT, "در حال آماده‌سازی ویدیو… ⏳")
         if URL:
             await status.edit_text("در حال دانلود ویدیو… ⬇️")
-            download_url(URL, source)
+            source = download_url(URL, source)
         else:
             await status.edit_text("در حال دریافت ویدیو از تلگرام… ⬇️")
             message = await app.get_messages(CHAT, MSG)
