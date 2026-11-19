@@ -99,7 +99,7 @@ async def main():
 
     async def set_status(text, cancellable=True):
         nonlocal status
-        markup = cancel_markup if cancellable else None
+        markup = cancel_markup if cancellable else InlineKeyboardMarkup([])
         if status is None and STATUS_MSG:
             try:
                 status = await app.get_messages(CHAT, STATUS_MSG)
