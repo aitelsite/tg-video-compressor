@@ -166,19 +166,32 @@ async def main():
         vf = f"scale=-2:'min({target_height},ih)'"
 
         await status.edit_text("در حال فشرده‌سازی ویدیو… 🎞")
-        run(["ffmpeg", "-y", "-i", str(source), "-map", "0:v:0", "-map", "0:a?",
-             "-c:v", "libx264", "-crf", "28", "-preset", "veryfast",
-             "-vf", vf, "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart",
-             str(output)])
+
+        def encode_crf(crf, scale_filter):
+            output.unlink(missing_ok=True)
+            run(["ffmpeg", "-y", "-i", str(source), "-map", "0:v:0", "-map", "0:a?",
+                 "-c:v", "libx264", "-crf", str(crf), "-preset", "faster",
+                 "-vf", scale_filter, "-c:a", "aac", "-b:a", "64k",
+                 "-movflags", "+faststart", str(output)])
+
+        # A stronger default compression while retaining the 720p ceiling.
+        encode_crf(30, vf)
+
+        # If the source was already highly compressed, make one stronger pass.
+        # Only fall back to 480p when the 720p encode barely reduces the file.
+        if not small_mode and output.stat().st_size >= int(original_size * 0.85):
+            encode_crf(32, vf)
+            if output.stat().st_size >= int(original_size * 0.85) and target_height > 480:
+                encode_crf(31, "scale=-2:'min(480,ih)'")
 
         if small_mode or output.stat().st_size >= MAX_OUTPUT:
             output.unlink(missing_ok=True)
             total_bitrate = max(300_000, int((MAX_OUTPUT * 8 * 0.85) / duration))
-            video_bitrate = max(180_000, total_bitrate - 96_000)
+            video_bitrate = max(180_000, total_bitrate - 64_000)
             run(["ffmpeg", "-y", "-i", str(source), "-map", "0:v:0", "-map", "0:a?",
                  "-c:v", "libx264", "-b:v", str(video_bitrate),
                  "-maxrate", str(video_bitrate), "-bufsize", str(video_bitrate * 2),
-                 "-preset", "veryfast", "-vf", vf, "-c:a", "aac", "-b:a", "96k",
+                 "-preset", "faster", "-vf", vf, "-c:a", "aac", "-b:a", "64k",
                  "-movflags", "+faststart", str(output)])
 
         if not output.exists() or not output.stat().st_size:
