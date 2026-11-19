@@ -19,6 +19,9 @@ STATUS_MSG = int(os.environ.get("STATUS_MSG") or 0)
 URL = os.environ.get("URL", "").strip()
 HEIGHT = os.environ.get("HEIGHT", "").strip()
 SMALL = os.environ.get("SMALL", "0") == "1"
+MODE = os.environ.get("MODE", "normal").strip().lower()
+if MODE not in {"normal", "smaller", "quality"}:
+    MODE = "normal"
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 API_ID = int(os.environ["API_ID"])
 API_HASH = os.environ["API_HASH"]
@@ -212,7 +215,14 @@ async def main():
         # The small mode deliberately uses a 480p ceiling and stronger compression.
         if small_mode:
             encode_crf(34, "scale=-2:'min(480,ih)'")
+        elif MODE == "quality":
+            # Lower CRF preserves more visual detail; output may be larger.
+            encode_crf(27, vf)
+        elif MODE == "smaller":
+            # Higher CRF prioritizes a smaller file at the selected resolution.
+            encode_crf(34, vf)
         else:
+            # Keep the existing default behavior unchanged.
             encode_crf(31, vf)
             if output.stat().st_size >= int(original_size * 0.80):
                 encode_crf(33, vf)
