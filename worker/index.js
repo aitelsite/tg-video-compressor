@@ -260,14 +260,6 @@ export default {
           text: "سلام! 🎬\\nویدیو را ارسال کنید یا لینک مستقیم فایل را بفرستید.\\n\\nتنظیمات فعلی: کیفیت " +
             settings.height + "p | حالت " + modeLabel(settings.mode) +
             "\\n\\nبرای راهنما /help را بفرستید.",
-          reply_markup: {
-            ...startReplyKeyboard(),
-            selective: false
-          }
-        });
-        await telegram(env, "sendMessage", {
-          chat_id: chatId,
-          text: "⚙️ تنظیمات فشرده‌سازی:",
           reply_markup: startReplyKeyboard()
         });
         await telegram(env, "sendMessage", {
@@ -277,13 +269,18 @@ export default {
         });
         return json({ ok: true });
       }
-      if (msg.text && /^\/start(?:@\\w+)?(?:\\s|$)/i.test(msg.text)) {
+      if (msg.text && /^\\/start(?:@\\w+)?(?:\\s|$)/i.test(msg.text)) {
         const settings = await getSettings(env, chatId);
         await telegram(env, "sendMessage", {
           chat_id: chatId,
-          text: "سلام! 🎬\nویدیو را ارسال کنید یا لینک مستقیم فایل را بفرستید.\n\nتنظیمات فعلی: کیفیت " +
+          text: "سلام! 🎬\\nویدیو را ارسال کنید یا لینک مستقیم فایل را بفرستید.\\n\\nتنظیمات فعلی: کیفیت " +
             settings.height + "p | حالت " + modeLabel(settings.mode) +
-            "\n\nبرای راهنما /help را بفرستید.",
+            "\\n\\nبرای راهنما /help را بفرستید.",
+          reply_markup: startReplyKeyboard()
+        });
+        await telegram(env, "sendMessage", {
+          chat_id: chatId,
+          text: "⚙️ تنظیمات فشرده‌سازی:",
           reply_markup: mainKeyboard(settings)
         });
         return json({ ok: true });
