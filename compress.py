@@ -9,11 +9,13 @@ import time
 from pathlib import Path
 
 from pyrogram import Client
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 MAX_INPUT = 4 * 1024**3
 MAX_OUTPUT = 2 * 1024**3
 CHAT = int(os.environ["CHAT"])
 MSG = int(os.environ.get("MSG") or 0)
+STATUS_MSG = int(os.environ.get("STATUS_MSG") or 0)
 URL = os.environ.get("URL", "").strip()
 HEIGHT = os.environ.get("HEIGHT", "").strip()
 SMALL = os.environ.get("SMALL", "0") == "1"
@@ -90,26 +92,58 @@ async def main():
                  bot_token=BOT_TOKEN, in_memory=True)
     status = None
     last_progress = 0.0
+    last_download_progress = 0.0
+    cancel_markup = InlineKeyboardMarkup([[
+        InlineKeyboardButton("❌ لغو ویدیو", callback_data=f"c:{CHAT}:{MSG}")
+    ]])
+
+    async def set_status(text, cancellable=True):
+        nonlocal status
+        markup = cancel_markup if cancellable else None
+        if status is None and STATUS_MSG:
+            try:
+                status = await app.get_messages(CHAT, STATUS_MSG)
+            except Exception:
+                status = None
+        if status is None:
+            status = await app.send_message(CHAT, text, reply_markup=markup)
+            return status
+        try:
+            status = await status.edit_text(text, reply_markup=markup)
+        except Exception:
+            status = await app.send_message(CHAT, text, reply_markup=markup)
+        return status
 
     async def upload_progress(current, total):
         nonlocal last_progress
         now = time.monotonic()
         if status and (now - last_progress >= 5 or current >= total):
             last_progress = now
+            pct = int(current * 100 / total) if total else 0
             try:
-                pct = int(current * 100 / total) if total else 0
-                await status.edit_text(f"در حال ارسال ویدیو… {pct}٪")
+                await set_status(f"در حال ارسال ویدیو… {pct}٪")
+            except Exception:
+                pass
+
+    async def download_progress(current, total, *_):
+        nonlocal last_download_progress
+        now = time.monotonic()
+        if status and (now - last_download_progress >= 5 or current >= total):
+            last_download_progress = now
+            pct = int(current * 100 / total) if total else 0
+            try:
+                await set_status(f"در حال دریافت ویدیو از تلگرام… {pct}٪")
             except Exception:
                 pass
 
     try:
         await app.start()
-        status = await app.send_message(CHAT, "در حال آماده‌سازی ویدیو… ⏳")
+        await set_status("در حال آماده‌سازی ویدیو… ⏳")
         if URL:
-            await status.edit_text("در حال دانلود ویدیو… ⬇️")
+            await set_status("در حال دانلود ویدیو… ⬇️")
             source = download_url(URL, source)
         else:
-            await status.edit_text("در حال دریافت ویدیو از تلگرام… ⬇️")
+            await set_status("در حال دریافت ویدیو از تلگرام… ⬇️")
             message = await app.get_messages(CHAT, MSG)
             if not message:
                 raise RuntimeError("پیام ویدیویی در تلگرام پیدا نشد.")
@@ -124,7 +158,7 @@ async def main():
                 candidate = work / f"telegram_video_{attempt}"
                 try:
                     downloaded = await app.download_media(
-                        message, file_name=str(candidate)
+                        message, file_name=str(candidate), progress=download_progress
                     )
                     if not downloaded:
                         raise RuntimeError("تلگرام فایلی برنگرداند.")
@@ -165,7 +199,7 @@ async def main():
         small_mode = SMALL or HEIGHT.lower() == "small"
         vf = f"scale=-2:'min({target_height},ih)'"
 
-        await status.edit_text("در حال فشرده‌سازی ویدیو… 🎞")
+        await set_status("در حال فشرده‌سازی ویدیو… 🎞")
 
         def encode_crf(crf, scale_filter):
             output.unlink(missing_ok=True)
@@ -174,17 +208,16 @@ async def main():
                  "-vf", scale_filter, "-c:a", "aac", "-b:a", "64k",
                  "-movflags", "+faststart", str(output)])
 
-        # A stronger default compression while retaining the 720p ceiling.
-        encode_crf(30, vf)
+        # Keep the requested resolution in normal mode and target at least 20% reduction.
+        # The small mode deliberately uses a 480p ceiling and stronger compression.
+        if small_mode:
+            encode_crf(34, "scale=-2:'min(480,ih)'")
+        else:
+            encode_crf(31, vf)
+            if output.stat().st_size >= int(original_size * 0.80):
+                encode_crf(33, vf)
 
-        # If the source was already highly compressed, make one stronger pass.
-        # Only fall back to 480p when the 720p encode barely reduces the file.
-        if not small_mode and output.stat().st_size >= int(original_size * 0.85):
-            encode_crf(32, vf)
-            if output.stat().st_size >= int(original_size * 0.85) and target_height > 480:
-                encode_crf(31, "scale=-2:'min(480,ih)'")
-
-        if small_mode or output.stat().st_size >= MAX_OUTPUT:
+        if output.stat().st_size >= MAX_OUTPUT:
             output.unlink(missing_ok=True)
             total_bitrate = max(300_000, int((MAX_OUTPUT * 8 * 0.85) / duration))
             video_bitrate = max(180_000, total_bitrate - 64_000)
@@ -208,7 +241,7 @@ async def main():
             f"حجم نهایی: {compressed_size / 1024**2:.1f} مگابایت\n"
             f"کاهش حجم: {reduction}٪"
         )
-        await status.edit_text("در حال ارسال ویدیوی فشرده‌شده… ⬆️")
+        await set_status("در حال ارسال ویدیوی فشرده‌شده… ⬆️")
         await app.send_video(CHAT, str(output), caption=caption,
                              duration=out_duration, width=out_width,
                              height=out_height, supports_streaming=True,
@@ -222,7 +255,7 @@ async def main():
         print("Processing failed:", detail[:500])
         if status:
             try:
-                await status.edit_text("❌ پردازش انجام نشد.\n" + detail[:700])
+                await set_status("❌ پردازش انجام نشد.\n" + detail[:700], cancellable=False)
             except Exception:
                 pass
         raise
