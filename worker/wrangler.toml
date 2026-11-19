@@ -4,3 +4,11 @@ compatibility_date = "2026-11-03"
 
 [vars]
 REPO = "aitelsite/tg-video-compressor"
+
+[[durable_objects.bindings]]
+name = "USER_SETTINGS"
+class_name = "UserSettings"
+
+[exports.UserSettings]
+type = "durable-object"
+storage = "sqlite"
