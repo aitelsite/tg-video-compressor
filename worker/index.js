@@ -65,9 +65,17 @@ async function saveSettings(env, chatId, settings) {
 function mainKeyboard(settings) {
   return { inline_keyboard: [
     [{ text: "🎚 انتخاب کیفیت خروجی (" + settings.height + ")", callback_data: "menu:quality" }],
-    [{ text: "📦 حالت فشرده‌سازی (" + modeLabel(settings.mode) + ")", callback_data: "menu:mode" }],
-    [{ text: "▶️ شروع", callback_data: "menu:start" }]
+    [{ text: "📦 حالت فشرده‌سازی (" + modeLabel(settings.mode) + ")", callback_data: "menu:mode" }]
   ] };
+}
+
+function startReplyKeyboard() {
+  return {
+    keyboard: [[{ text: "▶️ شروع" }]],
+    resize_keyboard: true,
+    is_persistent: true,
+    input_field_placeholder: "ویدیو را ارسال کنید…"
+  };
 }
 
 function qualityKeyboard() {
@@ -245,7 +253,31 @@ export default {
       if (!isAllowed(msg.from.id, env.ALLOWED_IDS)) return json({ ok: true });
 
       const text = msg.text || msg.caption || "";
-      if (msg.text && /^\/start(?:@\w+)?(?:\s|$)/i.test(msg.text)) {
+      if (msg.text && msg.text.trim() === "▶️ شروع") {
+        const settings = await getSettings(env, chatId);
+        await telegram(env, "sendMessage", {
+          chat_id: chatId,
+          text: "سلام! 🎬\\nویدیو را ارسال کنید یا لینک مستقیم فایل را بفرستید.\\n\\nتنظیمات فعلی: کیفیت " +
+            settings.height + "p | حالت " + modeLabel(settings.mode) +
+            "\\n\\nبرای راهنما /help را بفرستید.",
+          reply_markup: {
+            ...startReplyKeyboard(),
+            selective: false
+          }
+        });
+        await telegram(env, "sendMessage", {
+          chat_id: chatId,
+          text: "⚙️ تنظیمات فشرده‌سازی:",
+          reply_markup: startReplyKeyboard()
+        });
+        await telegram(env, "sendMessage", {
+          chat_id: chatId,
+          text: "⚙️ تنظیمات فشرده‌سازی:",
+          reply_markup: mainKeyboard(settings)
+        });
+        return json({ ok: true });
+      }
+      if (msg.text && /^\/start(?:@\\w+)?(?:\\s|$)/i.test(msg.text)) {
         const settings = await getSettings(env, chatId);
         await telegram(env, "sendMessage", {
           chat_id: chatId,
