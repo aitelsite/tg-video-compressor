@@ -7,8 +7,11 @@ on:
 permissions:
   contents: read
 
+# Keep every request for this chat instead of replacing an older pending request.
+# GitHub allows up to 100 pending runs per concurrency group with queue: max.
 concurrency:
   group: video-${{ github.event.client_payload.chat_id }}
+  queue: max
   cancel-in-progress: false
 
 jobs:
@@ -18,10 +21,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install FFmpeg
+      - name: Check or install FFmpeg
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          if command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1; then
+            echo "FFmpeg is already available; skipping installation."
+          else
+            echo "FFmpeg is missing; installing it now."
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
           df -h /
       - name: Set up Python
         uses: actions/setup-python@v5
