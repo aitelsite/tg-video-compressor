@@ -1,3 +1,5 @@
+import { DurableObject } from "cloudflare:workers";
+
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status, headers: { "content-type": "application/json; charset=utf-8" }
 });
@@ -22,6 +24,24 @@ function requestedHeight(text) {
 }
 
 const DEFAULT_SETTINGS = { height: "720", mode: "normal" };
+
+export class UserSettings extends DurableObject {
+  async readSettings() {
+    const value = await this.ctx.storage.get("settings");
+    return value && typeof value === "object" ? value : DEFAULT_SETTINGS;
+  }
+
+  async writeSettings(value) {
+    const settings = {
+      height: ["240", "360", "480", "540", "720", "1080"].includes(String(value?.height))
+        ? String(value.height) : DEFAULT_SETTINGS.height,
+      mode: ["normal", "smaller", "quality"].includes(String(value?.mode))
+        ? value.mode : DEFAULT_SETTINGS.mode
+    };
+    await this.ctx.storage.put("settings", settings);
+    return settings;
+  }
+}
 
 function modeLabel(mode) {
   return mode === "smaller" ? "کاهش حجم بیشتر"
