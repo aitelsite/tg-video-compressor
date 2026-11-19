@@ -21,14 +21,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Restore FFmpeg package cache
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives/*.deb
+          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-ubuntu24-v1
       - name: Check or install FFmpeg
         run: |
           if command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1; then
             echo "FFmpeg is already available; skipping installation."
           else
-            echo "FFmpeg is missing; installing it now."
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
+            echo "FFmpeg is missing; trying the runner's existing package indexes and cache."
+            if ! sudo apt-get install -y --no-install-recommends ffmpeg; then
+              echo "Cached package indexes were unavailable; refreshing indexes once."
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends ffmpeg
+            fi
           fi
           ffmpeg -version | head -n 1
           ffprobe -version | head -n 1
