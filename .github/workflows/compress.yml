@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Validate Python syntax
+        run: python3 -m py_compile compress.py
       - name: Restore FFmpeg package cache
         uses: actions/cache@v4
         with:
