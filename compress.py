@@ -224,7 +224,7 @@ async def main():
             run(["ffmpeg", "-y", "-i", str(source), "-map", "0:v:0", "-map", "0:a?",
                  "-c:v", "libx264", "-b:v", str(video_bitrate),
                  "-maxrate", str(video_bitrate), "-bufsize", str(video_bitrate * 2),
-                 "-preset", "faster", "-vf", vf, "-c:a", "aac", "-b:a", "64k",
+                 "-preset", "faster", "-vf", ("scale=-2:'min(480,ih)'" if small_mode else vf), "-c:a", "aac", "-b:a", "64k",
                  "-movflags", "+faststart", str(output)])
 
         if not output.exists() or not output.stat().st_size:
