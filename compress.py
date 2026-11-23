@@ -199,6 +199,10 @@ async def main():
                 pass
 
     try:
+        try:
+            await update_status_via_bot_api("در حال اتصال به تلگرام برای شروع پردازش… ⏳")
+        except Exception as status_exc:
+            print("Could not set initial connection status:", str(status_exc)[:200])
         await start_with_retry(app)
         await set_status("در حال آماده‌سازی ویدیو… ⏳")
         if URL:
