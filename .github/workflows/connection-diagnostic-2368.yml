@@ -1,0 +1,90 @@
+name: Telegram connection diagnostic - Pyrofork 2.3.68
+run-name: connection-diagnostic-2368
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Pyrofork and TgCrypto
+        run: python -m pip install --disable-pip-version-check "pyrofork==2.3.68" "tgcrypto==1.2.5"
+
+      - name: Check Bot API and MTProto separately
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          python - <<'PY'
+          import asyncio
+          import json
+          import os
+          import urllib.request
+          from pyrogram import Client
+
+          token = os.environ["BOT_TOKEN"]
+          api_id = int(os.environ["API_ID"])
+          api_hash = os.environ["API_HASH"]
+
+          # Test 1: Telegram Bot API getMe. Never print the request URL/token.
+          print("BOT_API_TEST: starting getMe")
+          try:
+              request = urllib.request.Request(
+                  f"https://api.telegram.org/bot{token}/getMe",
+                  headers={"User-Agent": "connection-diagnostic-2368/1.0"},
+              )
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  payload = json.loads(response.read().decode("utf-8"))
+              print("BOT_API_HTTP_OK:", bool(payload.get("ok")))
+              if payload.get("ok"):
+                  bot = payload.get("result") or {}
+                  print("BOT_API_GETME_OK: true")
+                  print("BOT_API_BOT_ID_PRESENT:", bool(bot.get("id")))
+              else:
+                  print("BOT_API_GETME_OK: false")
+                  print("BOT_API_ERROR_CODE:", payload.get("error_code", "unknown"))
+                  raise SystemExit("Bot API getMe was rejected")
+          except SystemExit:
+              raise
+          except Exception as exc:
+              print("BOT_API_GETME_OK: false")
+              print("BOT_API_EXCEPTION_TYPE:", type(exc).__name__)
+              raise SystemExit("Bot API connectivity test failed")
+
+          # Test 2: MTProto authorization via Pyrofork; no media or messages.
+          async def main():
+              client = Client(
+                  "connection-diagnostic-2368",
+                  api_id=api_id,
+                  api_hash=api_hash,
+                  bot_token=token,
+                  in_memory=True,
+              )
+              try:
+                  print("MTPROTO_TEST: starting")
+                  await client.start()
+                  me = await client.get_me()
+                  print("MTPROTO_START_OK: true")
+                  print("MTPROTO_GET_ME_OK:", bool(me and me.id))
+              except Exception as exc:
+                  print("MTPROTO_START_OK: false")
+                  print("MTPROTO_EXCEPTION_TYPE:", type(exc).__name__)
+                  print("MTPROTO_ERROR:", str(exc)[:500])
+                  raise
+              finally:
+                  if client.is_connected:
+                      await client.stop()
+
+          asyncio.run(main())
+          PY
