@@ -72,6 +72,14 @@ async def start_with_retry(app):
         except Exception as exc:
             detail = str(exc)
             print(f"Telegram connection attempt {attempt + 1} failed: {detail[:300]}")
+            # Authorization can fail after the MTProto transport connected.
+            # Disconnect it before retrying, otherwise Pyrogram rejects start()
+            # with "Client is already started".
+            if getattr(app, "is_connected", False):
+                try:
+                    await app.disconnect()
+                except Exception as disconnect_exc:
+                    print("Telegram disconnect after failed login:", str(disconnect_exc)[:200])
             if attempt >= len(delays):
                 raise RuntimeError(
                     "اتصال ربات به تلگرام پس از ۵ تلاش ناموفق بود. "
