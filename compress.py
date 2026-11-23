@@ -6,6 +6,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from pyrogram import Client
@@ -29,6 +31,55 @@ API_HASH = os.environ["API_HASH"]
 
 def run(args):
     subprocess.run(args, check=True)
+
+
+async def update_status_via_bot_api(text):
+    """Update the existing queue message even if Pyrogram cannot authorize."""
+    if not STATUS_MSG:
+        return
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText"
+    payload = json.dumps({
+        "chat_id": CHAT,
+        "message_id": STATUS_MSG,
+        "text": text,
+        "reply_markup": {"inline_keyboard": []}
+    }).encode("utf-8")
+
+    def request():
+        req = urllib.request.Request(
+            url, data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", "replace")
+            if "message is not modified" not in detail.lower():
+                raise RuntimeError(f"Telegram status update failed: HTTP {exc.code} {detail[:250]}")
+
+    await asyncio.to_thread(request)
+
+
+async def start_with_retry(app):
+    """Retry transient Telegram authorization/server failures with backoff."""
+    delays = (3, 7, 15, 25)
+    for attempt in range(len(delays) + 1):
+        try:
+            await app.start()
+            return
+        except Exception as exc:
+            detail = str(exc)
+            print(f"Telegram connection attempt {attempt + 1} failed: {detail[:300]}")
+            if attempt >= len(delays):
+                raise RuntimeError(
+                    "اتصال ربات به تلگرام پس از ۵ تلاش ناموفق بود. "
+                    "احتمالاً سرویس احراز هویت تلگرام موقتاً پاسخ نمی‌دهد. "
+                    "لطفاً چند دقیقه بعد دوباره تلاش کنید. "
+                    + detail[:250]
+                ) from exc
+            await asyncio.sleep(delays[attempt])
 
 
 def probe(path):
@@ -140,7 +191,7 @@ async def main():
                 pass
 
     try:
-        await app.start()
+        await start_with_retry(app)
         await set_status("در حال آماده‌سازی ویدیو… ⏳")
         if URL:
             await set_status("در حال دانلود ویدیو… ⬇️")
@@ -263,11 +314,18 @@ async def main():
     except Exception as exc:
         detail = str(exc).replace(BOT_TOKEN, "[مخفی]")
         print("Processing failed:", detail[:500])
-        if status:
+        error_text = "❌ پردازش انجام نشد.\n" + detail[:700]
+        try:
+            if status:
+                await set_status(error_text, cancellable=False)
+            else:
+                await update_status_via_bot_api(error_text)
+        except Exception as status_exc:
+            print("Could not update status message:", str(status_exc)[:300])
             try:
-                await set_status("❌ پردازش انجام نشد.\n" + detail[:700], cancellable=False)
-            except Exception:
-                pass
+                await update_status_via_bot_api(error_text)
+            except Exception as fallback_exc:
+                print("Bot API status fallback failed:", str(fallback_exc)[:300])
         raise
     finally:
         try:
