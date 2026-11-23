@@ -1,0 +1,78 @@
+name: Telegram MTProto diagnostic - Windows runner
+run-name: telethon-mtproto-windows-diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Telethon
+        run: python -m pip install --disable-pip-version-check telethon
+
+      - name: Test Bot API and Telethon MTProto separately
+        shell: bash
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          python - <<'PY'
+          import asyncio
+          import json
+          import os
+          import urllib.request
+          import telethon
+          from telethon import TelegramClient
+          from telethon.sessions import StringSession
+
+          token = os.environ["BOT_TOKEN"]
+          api_id = int(os.environ["API_ID"])
+          api_hash = os.environ["API_HASH"]
+
+          print("RUNNER_OS: Windows")
+          print("TELETHON_VERSION:", telethon.__version__)
+
+          print("BOT_API_TEST: starting getMe")
+          request = urllib.request.Request(
+              f"https://api.telegram.org/bot{token}/getMe",
+              headers={"User-Agent": "telethon-mtproto-windows-diagnostic/1.0"},
+          )
+          with urllib.request.urlopen(request, timeout=20) as response:
+              payload = json.loads(response.read().decode("utf-8"))
+          print("BOT_API_GETME_OK:", bool(payload.get("ok")))
+          if not payload.get("ok"):
+              raise SystemExit("Bot API getMe was rejected")
+          print("BOT_API_BOT_ID_PRESENT:", bool((payload.get("result") or {}).get("id")))
+
+          async def main():
+              client = TelegramClient(StringSession(), api_id, api_hash)
+              try:
+                  print("TELETHON_MTPROTO_TEST: connecting")
+                  await client.connect()
+                  print("TELETHON_TRANSPORT_CONNECTED:", bool(client.is_connected))
+                  print("TELETHON_BOT_AUTH_TEST: starting")
+                  await client.start(bot_token=token)
+                  me = await client.get_me()
+                  print("TELETHON_BOT_AUTH_OK:", bool(me and me.id))
+              except Exception as exc:
+                  print("TELETHON_BOT_AUTH_OK: false")
+                  print("TELETHON_EXCEPTION_TYPE:", type(exc).__name__)
+                  print("TELETHON_ERROR:", str(exc)[:500])
+                  raise
+              finally:
+                  if client.is_connected:
+                      await client.disconnect()
+
+          asyncio.run(main())
+          PY
