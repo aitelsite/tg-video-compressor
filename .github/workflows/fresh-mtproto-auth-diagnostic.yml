@@ -1,0 +1,108 @@
+name: Fresh MTProto authentication diagnostic
+run-name: fresh-mtproto-auth-diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mtproto-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install isolated Pyrogram client
+        run: |
+          python -m pip install --disable-pip-version-check "pyrogram==2.3.69"
+
+      - name: Test fresh MTProto bot authorization (no media processing)
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          python - <<'PY'
+          import asyncio
+          import os
+          import re
+          import sys
+          from pyrogram import Client
+
+          api_id_raw = os.environ.get("API_ID", "")
+          api_hash = os.environ.get("API_HASH", "")
+          bot_token = os.environ.get("BOT_TOKEN", "")
+
+          if not api_id_raw.strip() or not api_hash or not bot_token:
+              print("REQUIRED_SECRET_PRESENT: false")
+              sys.exit("One or more required secrets are missing; values were not printed.")
+
+          try:
+              api_id = int(api_id_raw.strip())
+          except ValueError:
+              print("API_ID_FORMAT_VALID: false")
+              sys.exit("API_ID is not an integer.")
+
+          if api_id <= 0 or len(api_hash) != 32 or not re.fullmatch(r"[0-9a-fA-F]{32}", api_hash):
+              print("API_CREDENTIAL_FORMAT_VALID: false")
+              sys.exit("API credential format check failed.")
+
+          print("REQUIRED_SECRET_PRESENT: true")
+          print("API_CREDENTIAL_FORMAT_VALID: true")
+          print("TEST_SCOPE: fresh MTProto login only; no download, FFmpeg, or message sending")
+
+          async def main():
+              delays = (5, 10, 15)
+              last_error = None
+
+              for attempt in range(1, 4):
+                  app = Client(
+                      name=f"fresh-auth-check-{attempt}",
+                      api_id=api_id,
+                      api_hash=api_hash,
+                      bot_token=bot_token,
+                      in_memory=True,
+                      no_updates=True,
+                  )
+                  try:
+                      print(f"MTProto_ATTEMPT_{attempt}: starting")
+                      await asyncio.wait_for(app.start(), timeout=45)
+                      me = await app.get_me()
+                      print("MTProto_AUTH: success")
+                      print("BOT_ID_RECEIVED: true" if me and me.id else "BOT_ID_RECEIVED: false")
+                      print("BOT_USERNAME_RECEIVED:", bool(me and me.username))
+                      return 0
+                  except Exception as exc:
+                      last_error = exc
+                      code = getattr(exc, "CODE", None)
+                      error_id = getattr(exc, "ID", None)
+                      print(f"MTProto_ATTEMPT_{attempt}: failed")
+                      print("ERROR_CLASS:", type(exc).__name__)
+                      if code is not None:
+                          print("TELEGRAM_RPC_CODE:", code)
+                      if error_id:
+                          safe_id = str(error_id).replace(bot_token, "[REDACTED]").replace(api_hash, "[REDACTED]")
+                          print("TELEGRAM_RPC_ERROR_ID:", safe_id[:120])
+                      if attempt < 3:
+                          await asyncio.sleep(delays[attempt - 1])
+                  finally:
+                      try:
+                          if getattr(app, "is_connected", False):
+                              await app.stop()
+                      except Exception:
+                          pass
+
+              detail = str(last_error or "Unknown error")
+              detail = detail.replace(bot_token, "[REDACTED]").replace(api_hash, "[REDACTED]")
+              detail = re.sub(r"(?i)(api_hash|bot_token|api_id)=\S+", r"\1=[REDACTED]", detail)
+              print("MTProto_AUTH: failed")
+              print("FINAL_ERROR:", detail[:350])
+              return 1
+
+          raise SystemExit(asyncio.run(main()))
+          PY
