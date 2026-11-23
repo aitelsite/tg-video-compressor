@@ -17,8 +17,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Pyrofork
-        run: python -m pip install --disable-pip-version-check "pyrofork==2.3.69"
+      - name: Install Pyrofork and TgCrypto
+        run: python -m pip install --disable-pip-version-check "pyrofork==2.3.69" "tgcrypto==1.2.5"
 
       - name: Check Bot API and MTProto separately
         env:
