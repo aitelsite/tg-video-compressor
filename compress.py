@@ -10,8 +10,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from pyrogram import Client
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from hydrogram import Client
+from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 MAX_INPUT = 4 * 1024**3
 MAX_OUTPUT = 2 * 1024**3
